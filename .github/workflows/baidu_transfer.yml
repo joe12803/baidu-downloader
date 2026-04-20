@@ -1,0 +1,35 @@
+name: Offline Download to Baidu
+on:
+  workflow_dispatch:
+    inputs:
+      download_url:
+        description: '资源下载链接'
+        required: true
+      save_path:
+        description: '百度网盘保存路径'
+        default: '/apps/transfer'
+        required: true
+
+jobs:
+  transfer:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install BaiduPCS-Go
+        run: |
+          wget https://github.com/qjfoidnh/BaiduPCS-Go/releases/download/v3.9.5/BaiduPCS-Go-v3.9.5-linux-amd64.zip
+          unzip BaiduPCS-Go-*.zip
+          sudo mv BaiduPCS-Go-*/BaiduPCS-Go /usr/local/bin/
+          chmod +x /usr/local/bin/BaiduPCS-Go
+
+      - name: Login to Baidu
+        run: |
+          BaiduPCS-Go login -bduss="${{ secrets.BAIDU_BDUSS }}" -stoken="${{ secrets.BAIDU_STOKEN }}"
+
+      - name: Download and Upload
+        run: |
+          mkdir -p downloads
+          # 下载
+          aria2c -x 16 -s 16 -d downloads "${{ github.event.inputs.download_url }}"
+          # 创建目录并上传
+          BaiduPCS-Go mkdir "${{ github.event.inputs.save_path }}" || true
+          BaiduPCS-Go upload downloads/* "${{ github.event.inputs.save_path }}/"
