@@ -22,25 +22,27 @@ jobs:
           sudo mv BaiduPCS-Go-*/BaiduPCS-Go /usr/local/bin/
           chmod +x /usr/local/bin/BaiduPCS-Go
 
-      - name: Setup and Login
-        run: |
-          # 关键：先登录，再立即强行修改配置文件
-          BaiduPCS-Go login -bduss="${{ secrets.BAIDU_BDUSS }}" -stoken="${{ secrets.BAIDU_STOKEN }}"
-          BaiduPCS-Go config set -appid 266719 # 回到最稳的 266719 (百度官方)
-          BaiduPCS-Go config set -user_agent "netdisk;11.12.3;android-android;11"
-
       - name: Download Content
         run: |
           mkdir -p downloads
           aria2c -x 16 -s 16 -d downloads "${{ github.event.inputs.download_url }}"
 
-      - name: Upload to Baidu
+      - name: Multi-Config Upload Attempt
         run: |
-          if [ -z "$(ls -A downloads)" ]; then
-             echo "No files downloaded, skipping upload."
-             exit 1
-          fi
-          # 再次确认配置
-          BaiduPCS-Go config set -appid 266719
-          # 尝试直接上传，不进行前置目录检查 (减少 API 调用)
-          BaiduPCS-Go upload downloads/* "${{ github.event.inputs.save_path }}/"
+          BaiduPCS-Go login -bduss="${{ secrets.BAIDU_BDUSS }}" -stoken="${{ secrets.BAIDU_STOKEN }}"
+          
+          # 方案 A: NAS 方案
+          echo ">>> 尝试方案 A: NAS 官方配置..."
+          BaiduPCS-Go config set -appid 266719 -user_agent "netdisk;P2SP;3.0.0.8;netdisk;11.12.3;ANG-AN00;android-android;10.0;JSbridge4.4.0;jointBridge;1.1.0;"
+          BaiduPCS-Go upload downloads/* "${{ github.event.inputs.save_path }}/" && exit 0 || echo "方案 A 失败，继续尝试..."
+
+          # 方案 B: iPhone 方案
+          echo ">>> 尝试方案 B: iPhone 深度伪装..."
+          BaiduPCS-Go config set -appid 266719 -user_agent "netdisk;11.12.3;iPhone;iOS15.0"
+          BaiduPCS-Go upload downloads/* "${{ github.event.inputs.save_path }}/" && exit 0 || echo "方案 B 失败，继续尝试..."
+
+          # 方案 C: 旧版兼容
+          echo ">>> 尝试方案 C: 旧版兼容配置..."
+          BaiduPCS-Go config set -appid 266719 -user_agent "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_13_2) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/63.0.3239.132 Safari/537.36"
+          BaiduPCS-Go upload downloads/* "${{ github.event.inputs.save_path }}/" && exit 0 || echo "所有方案均已失败。"
+          exit 1
