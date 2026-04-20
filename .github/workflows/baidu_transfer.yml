@@ -3,7 +3,7 @@ on:
   workflow_dispatch:
     inputs:
       download_url:
-        description: '资源下载链接'
+        description: '资源下载链接 (支持 YouTube, 磁力, 直链)'
         required: true
       save_path:
         description: '百度网盘保存路径'
@@ -14,22 +14,36 @@ jobs:
   transfer:
     runs-on: ubuntu-latest
     steps:
-      - name: Install BaiduPCS-Go
+      - name: Install Dependencies
         run: |
+          sudo apt-get update && sudo apt-get install -y aria2 python3-pip
+          # 安装 BaiduPCS-Go
           wget https://github.com/qjfoidnh/BaiduPCS-Go/releases/download/v3.9.5/BaiduPCS-Go-v3.9.5-linux-amd64.zip
           unzip BaiduPCS-Go-*.zip
           sudo mv BaiduPCS-Go-*/BaiduPCS-Go /usr/local/bin/
           chmod +x /usr/local/bin/BaiduPCS-Go
+          # 安装 yt-dlp 用于下载视频网站内容
+          sudo wget https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -O /usr/local/bin/yt-dlp
+          sudo chmod a+rx /usr/local/bin/yt-dlp
 
       - name: Login to Baidu
         run: |
           BaiduPCS-Go login -bduss="${{ secrets.BAIDU_BDUSS }}" -stoken="${{ secrets.BAIDU_STOKEN }}"
 
-      - name: Download and Upload
+      - name: Download Content
         run: |
           mkdir -p downloads
-          # 下载
-          aria2c -x 16 -s 16 -d downloads "${{ github.event.inputs.download_url }}"
-          # 创建目录并上传
+          URL="${{ github.event.inputs.download_url }}"
+          
+          if [[ "$URL" == *"youtube.com"* ]] || [[ "$URL" == *"youtu.be"* ]] || [[ "$URL" == *"bilibili.com"* ]]; then
+            echo "Detected video platform URL, using yt-dlp..."
+            yt-dlp -f "bestvideo+bestaudio/best" --merge-output-format mp4 -o "downloads/%(title)s.%(ext)s" "$URL"
+          else
+            echo "Using aria2c for direct/magnet link..."
+            aria2c -x 16 -s 16 -d downloads "$URL"
+          fi
+
+      - name: Upload to Baidu
+        run: |
           BaiduPCS-Go mkdir "${{ github.event.inputs.save_path }}" || true
           BaiduPCS-Go upload downloads/* "${{ github.event.inputs.save_path }}/"
