@@ -30,21 +30,12 @@ jobs:
         run: |
           BaiduPCS-Go login -bduss="${{ secrets.BAIDU_BDUSS }}" -stoken="${{ secrets.BAIDU_STOKEN }}"
 
-      - name: Convert Cookies to Netscape Format
-        shell: python
+      - name: Prepare Cookies
         run: |
-          import os
-          cookie_str = os.environ.get('YOUTUBE_COOKIES', '')
-          with open('cookies.txt', 'w') as f:
-              f.write("# Netscape HTTP Cookie File\n")
-              # 解析分号分隔的 Cookie 字符串并写入
-              for part in cookie_str.split(';'):
-                  if '=' in part:
-                      name, value = part.strip().split('=', 1)
-                      # 填充 Netscape 格式所需的 7 个字段 (domain, flag, path, secure, expiration, name, value)
-                      f.write(f".youtube.com\tTRUE\t/\tTRUE\t0\t{name}\t{value}\n")
-        env:
-          YOUTUBE_COOKIES: ${{ secrets.YOUTUBE_COOKIES }}
+          # 直接保存 Secret 里的 Netscape 格式内容
+          echo "${{ secrets.YOUTUBE_COOKIES }}" > cookies.txt
+          # 简单校验
+          head -n 5 cookies.txt
 
       - name: Download Content
         run: |
@@ -52,8 +43,8 @@ jobs:
           URL="${{ github.event.inputs.download_url }}"
           
           if [[ "$URL" == *"youtube.com"* ]] || [[ "$URL" == *"youtu.be"* ]] || [[ "$URL" == *"bilibili.com"* ]]; then
-            echo "Detected video platform URL, using yt-dlp with Netscape Cookies..."
-            # 使用 --cookies 参数加载文件，并增加 --js-runtimes 指定运行时
+            echo "Detected video platform URL, using yt-dlp with Netscape Cookies file..."
+            # 直接使用 --cookies 文件，这最稳！
             yt-dlp --cookies cookies.txt                    -f "bestvideo+bestaudio/best" --merge-output-format mp4                    --ignore-errors                    -o "downloads/%(title)s.%(ext)s" "$URL"
           else
             echo "Using aria2c for direct/magnet link..."
@@ -62,7 +53,6 @@ jobs:
 
       - name: Upload to Baidu
         run: |
-          # 如果下载失败导致文件夹为空，不要报错
           if [ -z "$(ls -A downloads)" ]; then
              echo "No files downloaded, skipping upload."
              exit 1
