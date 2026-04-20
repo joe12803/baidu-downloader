@@ -17,18 +17,17 @@ jobs:
       - name: Install Dependencies
         run: |
           sudo apt-get update && sudo apt-get install -y aria2 python3-pip curl unzip
-          # 安装 BaiduPCS-Go
           wget https://github.com/qjfoidnh/BaiduPCS-Go/releases/download/v3.9.5/BaiduPCS-Go-v3.9.5-linux-amd64.zip
           unzip BaiduPCS-Go-*.zip
           sudo mv BaiduPCS-Go-*/BaiduPCS-Go /usr/local/bin/
           chmod +x /usr/local/bin/BaiduPCS-Go
 
-      - name: Config and Login
+      - name: Setup and Login
         run: |
-          # 尝试使用 778712 AppID + iPhone UA (目前 Issue 中反馈最稳的组合)
-          BaiduPCS-Go config set -appid 778712
-          BaiduPCS-Go config set -user_agent "netdisk;11.12.3;iPhone;iOS15.0"
+          # 关键：先登录，再立即强行修改配置文件
           BaiduPCS-Go login -bduss="${{ secrets.BAIDU_BDUSS }}" -stoken="${{ secrets.BAIDU_STOKEN }}"
+          BaiduPCS-Go config set -appid 266719 # 回到最稳的 266719 (百度官方)
+          BaiduPCS-Go config set -user_agent "netdisk;11.12.3;android-android;11"
 
       - name: Download Content
         run: |
@@ -41,7 +40,7 @@ jobs:
              echo "No files downloaded, skipping upload."
              exit 1
           fi
-          # 先清理一次可能的旧配置干扰，强制重新检测远端
-          BaiduPCS-Go ls "${{ github.event.inputs.save_path }}" || BaiduPCS-Go mkdir "${{ github.event.inputs.save_path }}"
-          # 尝试上传
+          # 再次确认配置
+          BaiduPCS-Go config set -appid 266719
+          # 尝试直接上传，不进行前置目录检查 (减少 API 调用)
           BaiduPCS-Go upload downloads/* "${{ github.event.inputs.save_path }}/"
