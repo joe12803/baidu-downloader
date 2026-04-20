@@ -6,7 +6,7 @@ on:
         description: '资源下载链接'
         required: true
       save_path:
-        description: '百度网盘保存路径'
+        description: '百度网盘保存路径 (必须以 / 开头)'
         default: '/apps/transfer'
         required: true
 
@@ -27,22 +27,24 @@ jobs:
           mkdir -p downloads
           aria2c -x 16 -s 16 -d downloads "${{ github.event.inputs.download_url }}"
 
-      - name: Multi-Config Upload Attempt
+      - name: Precise Android Simulation Upload
         run: |
+          # 1. 登录
           BaiduPCS-Go login -bduss="${{ secrets.BAIDU_BDUSS }}" -stoken="${{ secrets.BAIDU_STOKEN }}"
           
-          # 方案 A: NAS 方案
-          echo ">>> 尝试方案 A: NAS 官方配置..."
-          BaiduPCS-Go config set -appid 266719 -user_agent "netdisk;P2SP;3.0.0.8;netdisk;11.12.3;ANG-AN00;android-android;10.0;JSbridge4.4.0;jointBridge;1.1.0;"
-          BaiduPCS-Go upload downloads/* "${{ github.event.inputs.save_path }}/" && exit 0 || echo "方案 A 失败，继续尝试..."
-
-          # 方案 B: iPhone 方案
-          echo ">>> 尝试方案 B: iPhone 深度伪装..."
-          BaiduPCS-Go config set -appid 266719 -user_agent "netdisk;11.12.3;iPhone;iOS15.0"
-          BaiduPCS-Go upload downloads/* "${{ github.event.inputs.save_path }}/" && exit 0 || echo "方案 B 失败，继续尝试..."
-
-          # 方案 C: 旧版兼容
-          echo ">>> 尝试方案 C: 旧版兼容配置..."
-          BaiduPCS-Go config set -appid 266719 -user_agent "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_13_2) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/63.0.3239.132 Safari/537.36"
-          BaiduPCS-Go upload downloads/* "${{ github.event.inputs.save_path }}/" && exit 0 || echo "所有方案均已失败。"
-          exit 1
+          # 2. 按照用户提供的成功案例进行配置
+          echo ">>> 配置模拟安卓身份 (AppID 266719 + 特定 UA)..."
+          BaiduPCS-Go config set -appid 266719
+          BaiduPCS-Go config set -user_agent "netdisk;2.2.51.7;j690a;android-android;10"
+          
+          # 3. 打印当前配置进行确认
+          BaiduPCS-Go config list
+          
+          # 4. 规范化路径并上传 (确保路径以 / 开头，不带末尾斜杠)
+          DEST_PATH="${{ github.event.inputs.save_path }}"
+          # 去掉末尾可能的斜杠
+          DEST_PATH=$(echo $DEST_PATH | sed 's#/$##')
+          
+          echo ">>> 目标路径规范化为: $DEST_PATH"
+          BaiduPCS-Go mkdir "$DEST_PATH" || true
+          BaiduPCS-Go upload downloads/* "$DEST_PATH"
