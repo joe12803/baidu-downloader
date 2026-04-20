@@ -16,7 +16,7 @@ jobs:
     steps:
       - name: Install Dependencies
         run: |
-          sudo apt-get update && sudo apt-get install -y aria2 python3-pip curl unzip
+          sudo apt-get update && sudo apt-get install -y aria2 python3-pip curl unzip nodejs
           # 安装 BaiduPCS-Go
           wget https://github.com/qjfoidnh/BaiduPCS-Go/releases/download/v3.9.5/BaiduPCS-Go-v3.9.5-linux-amd64.zip
           unzip BaiduPCS-Go-*.zip
@@ -30,10 +30,21 @@ jobs:
         run: |
           BaiduPCS-Go login -bduss="${{ secrets.BAIDU_BDUSS }}" -stoken="${{ secrets.BAIDU_STOKEN }}"
 
-      - name: Prepare Cookies
+      - name: Convert Cookies to Netscape Format
+        shell: python
         run: |
-          # 将 Secret 里的 Cookie 转换为 yt-dlp 支持的格式或直接传参
-          echo "${{ secrets.YOUTUBE_COOKIES }}" > youtube_cookies.txt
+          import os
+          cookie_str = os.environ.get('YOUTUBE_COOKIES', '')
+          with open('cookies.txt', 'w') as f:
+              f.write("# Netscape HTTP Cookie File\n")
+              # 解析分号分隔的 Cookie 字符串并写入
+              for part in cookie_str.split(';'):
+                  if '=' in part:
+                      name, value = part.strip().split('=', 1)
+                      # 填充 Netscape 格式所需的 7 个字段 (domain, flag, path, secure, expiration, name, value)
+                      f.write(f".youtube.com\tTRUE\t/\tTRUE\t0\t{name}\t{value}\n")
+        env:
+          YOUTUBE_COOKIES: ${{ secrets.YOUTUBE_COOKIES }}
 
       - name: Download Content
         run: |
@@ -41,9 +52,9 @@ jobs:
           URL="${{ github.event.inputs.download_url }}"
           
           if [[ "$URL" == *"youtube.com"* ]] || [[ "$URL" == *"youtu.be"* ]] || [[ "$URL" == *"bilibili.com"* ]]; then
-            echo "Detected video platform URL, using yt-dlp with Cookies..."
-            # 使用 --add-header 传递 Cookie 字符串 (针对这种原始格式最有效)
-            yt-dlp --add-header "Cookie:${{ secrets.YOUTUBE_COOKIES }}"                    -f "bestvideo+bestaudio/best" --merge-output-format mp4 -o "downloads/%(title)s.%(ext)s" "$URL"
+            echo "Detected video platform URL, using yt-dlp with Netscape Cookies..."
+            # 使用 --cookies 参数加载文件，并增加 --js-runtimes 指定运行时
+            yt-dlp --cookies cookies.txt                    -f "bestvideo+bestaudio/best" --merge-output-format mp4                    --ignore-errors                    -o "downloads/%(title)s.%(ext)s" "$URL"
           else
             echo "Using aria2c for direct/magnet link..."
             aria2c -x 16 -s 16 -d downloads "$URL"
@@ -51,5 +62,10 @@ jobs:
 
       - name: Upload to Baidu
         run: |
+          # 如果下载失败导致文件夹为空，不要报错
+          if [ -z "$(ls -A downloads)" ]; then
+             echo "No files downloaded, skipping upload."
+             exit 1
+          fi
           BaiduPCS-Go mkdir "${{ github.event.inputs.save_path }}" || true
           BaiduPCS-Go upload downloads/* "${{ github.event.inputs.save_path }}/"
