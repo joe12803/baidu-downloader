@@ -22,9 +22,6 @@ jobs:
           unzip BaiduPCS-Go-*.zip
           sudo mv BaiduPCS-Go-*/BaiduPCS-Go /usr/local/bin/
           chmod +x /usr/local/bin/BaiduPCS-Go
-          # 安装 Deno (帮助 yt-dlp 处理 JS 脚本绕过验证)
-          curl -fsSL https://deno.land/x/install/install.sh | sh
-          echo "$HOME/.deno/bin" >> $GITHUB_PATH
           # 安装 yt-dlp
           sudo wget https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -O /usr/local/bin/yt-dlp
           sudo chmod a+rx /usr/local/bin/yt-dlp
@@ -33,15 +30,20 @@ jobs:
         run: |
           BaiduPCS-Go login -bduss="${{ secrets.BAIDU_BDUSS }}" -stoken="${{ secrets.BAIDU_STOKEN }}"
 
+      - name: Prepare Cookies
+        run: |
+          # 将 Secret 里的 Cookie 转换为 yt-dlp 支持的格式或直接传参
+          echo "${{ secrets.YOUTUBE_COOKIES }}" > youtube_cookies.txt
+
       - name: Download Content
         run: |
           mkdir -p downloads
           URL="${{ github.event.inputs.download_url }}"
           
           if [[ "$URL" == *"youtube.com"* ]] || [[ "$URL" == *"youtu.be"* ]] || [[ "$URL" == *"bilibili.com"* ]]; then
-            echo "Detected video platform URL, using yt-dlp with Deno..."
-            # 增加 user-agent 伪装
-            yt-dlp --user-agent "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"                    -f "bestvideo+bestaudio/best" --merge-output-format mp4 -o "downloads/%(title)s.%(ext)s" "$URL"
+            echo "Detected video platform URL, using yt-dlp with Cookies..."
+            # 使用 --add-header 传递 Cookie 字符串 (针对这种原始格式最有效)
+            yt-dlp --add-header "Cookie:${{ secrets.YOUTUBE_COOKIES }}"                    -f "bestvideo+bestaudio/best" --merge-output-format mp4 -o "downloads/%(title)s.%(ext)s" "$URL"
           else
             echo "Using aria2c for direct/magnet link..."
             aria2c -x 16 -s 16 -d downloads "$URL"
