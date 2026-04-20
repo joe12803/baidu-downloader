@@ -16,7 +16,7 @@ jobs:
     steps:
       - name: Install Dependencies
         run: |
-          sudo apt-get update && sudo apt-get install -y aria2 python3-pip curl unzip nodejs
+          sudo apt-get update && sudo apt-get install -y aria2 python3-pip curl unzip
           # 安装 BaiduPCS-Go
           wget https://github.com/qjfoidnh/BaiduPCS-Go/releases/download/v3.9.5/BaiduPCS-Go-v3.9.5-linux-amd64.zip
           unzip BaiduPCS-Go-*.zip
@@ -26,16 +26,12 @@ jobs:
           sudo wget https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -O /usr/local/bin/yt-dlp
           sudo chmod a+rx /usr/local/bin/yt-dlp
 
-      - name: Login to Baidu
+      - name: Config and Login
         run: |
+          # 模拟安卓端配置，这是解决 31023 错误最有效的手段
+          BaiduPCS-Go config set -appid 266719
+          BaiduPCS-Go config set -user_agent "netdisk;11.12.3;android-android;11"
           BaiduPCS-Go login -bduss="${{ secrets.BAIDU_BDUSS }}" -stoken="${{ secrets.BAIDU_STOKEN }}"
-
-      - name: Prepare Cookies
-        run: |
-          # 直接保存 Secret 里的 Netscape 格式内容
-          echo "${{ secrets.YOUTUBE_COOKIES }}" > cookies.txt
-          # 简单校验
-          head -n 5 cookies.txt
 
       - name: Download Content
         run: |
@@ -43,11 +39,9 @@ jobs:
           URL="${{ github.event.inputs.download_url }}"
           
           if [[ "$URL" == *"youtube.com"* ]] || [[ "$URL" == *"youtu.be"* ]] || [[ "$URL" == *"bilibili.com"* ]]; then
-            echo "Detected video platform URL, using yt-dlp with Netscape Cookies file..."
-            # 直接使用 --cookies 文件，这最稳！
-            yt-dlp --cookies cookies.txt                    -f "bestvideo+bestaudio/best" --merge-output-format mp4                    --ignore-errors                    -o "downloads/%(title)s.%(ext)s" "$URL"
+            echo "${{ secrets.YOUTUBE_COOKIES }}" > cookies.txt
+            yt-dlp --cookies cookies.txt -f "bestvideo+bestaudio/best" --merge-output-format mp4 -o "downloads/%(title)s.%(ext)s" "$URL"
           else
-            echo "Using aria2c for direct/magnet link..."
             aria2c -x 16 -s 16 -d downloads "$URL"
           fi
 
@@ -58,4 +52,5 @@ jobs:
              exit 1
           fi
           BaiduPCS-Go mkdir "${{ github.event.inputs.save_path }}" || true
+          # 加上强制上传参数
           BaiduPCS-Go upload downloads/* "${{ github.event.inputs.save_path }}/"
